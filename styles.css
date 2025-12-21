@@ -1,0 +1,37 @@
+.ai-generate-btn, .ai-rewrite-btn {
+  background-color: #71b7fb; /* Light Blue */
+  color: #004182;
+  border: 1px solid #004182;
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  display: inline-block;
+  transition: all 0.2s ease;
+}
+
+.ai-generate-btn:hover, .ai-rewrite-btn:hover {
+  background-color: #dbeeff;
+}
+
+.ai-generate-btn:disabled, .ai-rewrite-btn:disabled, .ai-summarize-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  border-color: #999;
+  color: #666;
+}
+
+.ai-summarize-btn {
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-summarize-btn:hover {
+  background-color: #f3f2ef !important; /* LinkedIn gray hover */
+}
