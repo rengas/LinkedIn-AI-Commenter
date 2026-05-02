@@ -27,3 +27,8 @@ toggles.forEach((id, index) => {
     chrome.storage.local.set(setting);
   });
 });
+
+// Open the full settings page (settings.html) in a new tab.
+document.getElementById('openSettings').addEventListener('click', () => {
+  chrome.runtime.openOptionsPage();
+});

@@ -1,402 +1,487 @@
-// Robust Injection Logic
-const INJECTED_CLASS = "ai-btn-v10";
+// LinkedIn AI Commenter — content script
 
-// Settings State
-let settings = {
+// ===== Inline styles =====
+// Inject as a <style> tag rather than a manifest content_scripts CSS, so the
+// stylesheet has no chrome-extension:// href that pages can fingerprint.
+(function injectStyles() {
+  const css = `
+.ai-generate-btn, .ai-rewrite-btn {
+  background-color: #71b7fb;
+  color: #004182;
+  border: 1px solid #004182;
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  display: inline-block;
+  transition: all 0.2s ease;
+}
+.ai-generate-btn:hover, .ai-rewrite-btn:hover { background-color: #dbeeff; }
+.ai-generate-btn:disabled, .ai-rewrite-btn:disabled, .ai-summarize-btn:disabled {
+  background-color: #ccc; cursor: not-allowed; border-color: #999; color: #666;
+}
+.ai-summarize-btn {
+  border-radius: 16px; padding: 4px 10px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s ease;
+}
+.ai-summarize-btn:hover { background-color: #f3f2ef !important; }
+
+.ai-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2147483647;
+  font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+}
+.ai-overlay-card {
+  background: #fff; border-radius: 12px;
+  width: min(560px, 92%); max-height: 80vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+.ai-overlay-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 18px; border-bottom: 1px solid #eee;
+  font-size: 14px; font-weight: 600; color: #1a1a1a;
+}
+.ai-overlay-close {
+  background: none; border: none; cursor: pointer;
+  font-size: 22px; line-height: 1; color: #666; padding: 0 4px;
+}
+.ai-overlay-body {
+  padding: 16px 18px; overflow: auto;
+  white-space: pre-wrap; line-height: 1.5; font-size: 14px; color: #1a1a1a;
+}
+`;
+  const style = document.createElement("style");
+  style.textContent = css;
+  (document.head || document.documentElement).appendChild(style);
+})();
+
+// ===== Settings state =====
+const DEFAULT_TOGGLES = {
   enableComment: true,
   enableReply: true,
   enableSummarizer: true,
   enableRewrite: true
 };
+const settings = { ...DEFAULT_TOGGLES };
 
-// Load Settings
-chrome.storage.local.get(settings, (data) => {
-  settings = data;
-});
+(async () => {
+  const stored = await chrome.storage.local.get(DEFAULT_TOGGLES);
+  Object.assign(settings, stored);
+})();
 
-// Listen for updates
-chrome.storage.onChanged.addListener((changes) => {
-  for (let key in changes) {
-    if (settings.hasOwnProperty(key)) {
-      settings[key] = changes[key].newValue;
-    }
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  for (const key of Object.keys(changes)) {
+    if (key in DEFAULT_TOGGLES) settings[key] = changes[key].newValue;
   }
 });
 
-// 1. MAIN OBSERVER
-const observer = new MutationObserver(() => {
-  // Debounce slightly to avoid performance hits
-  requestAnimationFrame(() => {
+// ===== Throttled DOM observer =====
+// Single shared scheduler. Coalesces mutation bursts into one pass per ~250ms,
+// and ignores mutations whose only added nodes are our own buttons (otherwise
+// every appendChild we do triggers another reconciliation pass).
+const OUR_CLASSES = new Set([
+  "ai-btn-container",
+  "ai-generate-btn",
+  "ai-summarize-btn",
+  "ai-rewrite-btn",
+  "ai-msg-reply-btn",
+  "ai-overlay"
+]);
+
+function isOurNode(node) {
+  if (node.nodeType !== 1) return true; // text/comment nodes are uninteresting
+  if (!node.classList) return false;
+  for (const c of OUR_CLASSES) if (node.classList.contains(c)) return true;
+  return false;
+}
+
+let injectTimer = null;
+function scheduleInject() {
+  if (injectTimer !== null) return;
+  injectTimer = setTimeout(() => {
+    injectTimer = null;
     injectCommentButtons();
     injectSummarizeButtons();
     injectImproveButtons();
     injectMessageButtons();
-  });
+  }, 250);
+}
+
+const observer = new MutationObserver((mutations) => {
+  for (const m of mutations) {
+    if (m.addedNodes.length === 0) continue;
+    for (const node of m.addedNodes) {
+      if (!isOurNode(node)) {
+        scheduleInject();
+        return;
+      }
+    }
+  }
 });
 
-observer.observe(document.body, { childList: true, subtree: true });
+function startObserving() {
+  observer.observe(document.body, { childList: true, subtree: true });
+  scheduleInject();
+}
 
-// 2. FALLBACK POLLING (Ensures buttons appear even if observer misses)
-setInterval(() => {
-  injectCommentButtons();
-  injectSummarizeButtons();
-  injectImproveButtons();
-  injectMessageButtons();
-}, 2000);
+if (document.body) startObserving();
+else document.addEventListener("DOMContentLoaded", startObserving, { once: true });
 
 
-// --- FEATURE 1: COMMENT BUTTONS ---
+// ===== Inject: comment / reply buttons =====
 function injectCommentButtons() {
-  // Select all text editors (comments, replies, messages)
-  // LinkedIn uses role="textbox" consistently
   const editors = document.querySelectorAll('[role="textbox"], .ql-editor');
 
   editors.forEach(editor => {
-    // Filter out search bars and non-comment inputs
-    if (editor.getAttribute('aria-label')?.includes('Search')) return;
-    if (editor.closest('.search-global-typeahead__input')) return;
+    if (editor.getAttribute("aria-label")?.includes("Search")) return;
+    if (editor.closest(".search-global-typeahead__input")) return;
+    if (editor.closest(".share-creation-state") || editor.closest(".share-box-v2")) return;
+    if (editor.closest(".msg-form__contenteditable") || editor.closest(".msg-form__message-text-editor")) return;
 
-    // Filter out the main post creation modal (handled by injectImproveButtons)
-    if (editor.closest('.share-creation-state') || editor.closest('.share-box-v2')) return;
-
-    // Filter out message inputs (handled by injectMessageButtons)
-    if (editor.closest('.msg-form__contenteditable') || editor.closest('.msg-form__message-text-editor')) return;
-
-    // Check injection
-    const container = editor.closest('.comments-comment-box__form-container') ||
-      editor.closest('form') ||
+    const container =
+      editor.closest(".comments-comment-box__form-container") ||
+      editor.closest("form") ||
       editor.parentElement;
+    if (!container || container.querySelector(".ai-generate-btn")) return;
 
-    if (!container || container.querySelector('.ai-generate-btn')) return;
+    const isInsideComment = !!editor.closest(".comments-comment-item");
+    const isInsideReply = !!editor.closest(".comments-reply-item");
 
-    // Determine if it's a reply or a new comment
-    // 1. Check if inside a comment item (replying to someone)
-    const isInsideComment = editor.closest('.comments-comment-item') !== null;
-    const isInsideReply = editor.closest('.comments-reply-item') !== null;
-
-    // 2. Check submit button text
-    const submitBtn = container.querySelector('.comments-comment-box__submit-button--primary') ||
+    const submitBtn =
+      container.querySelector(".comments-comment-box__submit-button--primary") ||
       container.querySelector('button[type="submit"]') ||
-      container.querySelector('.artdeco-button--primary');
+      container.querySelector(".artdeco-button--primary");
+    const submitText = submitBtn ? submitBtn.innerText.trim() : "";
 
-    const submitText = submitBtn ? submitBtn.innerText.trim() : '';
+    const placeholder = editor.getAttribute("placeholder") || "";
+    const ariaLabel = editor.getAttribute("aria-label") || "";
+    const isReplyPlaceholder =
+      placeholder.toLowerCase().includes("reply") || ariaLabel.toLowerCase().includes("reply");
 
-    // 3. Check placeholder or aria-label
-    const placeholder = editor.getAttribute('placeholder') || '';
-    const ariaLabel = editor.getAttribute('aria-label') || '';
-    const isReplyPlaceholder = placeholder.toLowerCase().includes('reply') || ariaLabel.toLowerCase().includes('reply');
+    const isReply = isInsideComment || isInsideReply || submitText === "Reply" || isReplyPlaceholder;
 
-    // It is a reply if we are inside a comment thread OR the button says "Reply" OR the placeholder says "Reply"
-    const isReply = isInsideComment || isInsideReply || submitText === 'Reply' || isReplyPlaceholder;
-
-    // CHECK SETTINGS
     if (isReply && !settings.enableReply) return;
     if (!isReply && !settings.enableComment) return;
 
-    const btnText = isReply ? "✨ Assist Reply" : "✨ AI Comment";
-
-    // CREATE BUTTON
-    const btn = createButton(btnText, "ai-generate-btn");
+    const btn = createButton(isReply ? "Assist Reply" : "AI Comment", "ai-generate-btn");
     btn.style.marginTop = "5px";
-
-    btn.onclick = async (e) => {
+    btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      await handleGeneration(btn, editor, "generateComment");
-    };
+      handleGeneration(btn, editor, "generateComment");
+    });
 
-    // Inject
-    // Wrapper for buttons to keep them together
-    const btnContainer = document.createElement('div');
-    btnContainer.style.display = 'inline-flex';
-    btnContainer.style.gap = '8px';
-    btnContainer.style.alignItems = 'center';
-    btnContainer.className = "ai-btn-container"; // Add class for checking existence
+    const wrap = document.createElement("div");
+    wrap.className = "ai-btn-container";
+    wrap.style.cssText = "display:inline-flex;gap:8px;align-items:center;";
+    wrap.appendChild(btn);
 
-    // 1. Main Button (Comment/Reply)
-    btnContainer.appendChild(btn);
-
-    if (submitBtn && submitBtn.parentElement) {
-      // Inject AFTER the submit button
-      submitBtn.parentElement.insertBefore(btnContainer, submitBtn.nextSibling);
-      btnContainer.style.marginLeft = "8px";
+    if (submitBtn?.parentElement) {
+      submitBtn.parentElement.insertBefore(wrap, submitBtn.nextSibling);
+      wrap.style.marginLeft = "8px";
     } else {
-      // Fallback: Try to put it in the button bar
-      const buttonBar = container.querySelector('.comments-comment-box__detour-icons') || container;
-      if (buttonBar && buttonBar !== container) {
-        buttonBar.parentElement.insertBefore(btnContainer, buttonBar.nextSibling);
-      } else {
-        container.appendChild(btnContainer);
-      }
+      const buttonBar = container.querySelector(".comments-comment-box__detour-icons");
+      if (buttonBar?.parentElement) buttonBar.parentElement.insertBefore(wrap, buttonBar.nextSibling);
+      else container.appendChild(wrap);
     }
   });
 }
 
 
-// --- FEATURE 2: SUMMARIZE BUTTONS ---
+// ===== Inject: summarize buttons (one per post) =====
 function injectSummarizeButtons() {
   if (!settings.enableSummarizer) return;
-
-  // Find all posts
-  const posts = document.querySelectorAll('.feed-shared-update-v2, .occludable-update');
+  const posts = document.querySelectorAll(".feed-shared-update-v2, .occludable-update");
 
   posts.forEach(post => {
-    // Find the action bar (Like, Comment, etc.)
-    const actionBar = post.querySelector('.feed-shared-social-action-bar');
-    if (!actionBar || actionBar.querySelector('.ai-summarize-btn')) return;
+    const actionBar = post.querySelector(".feed-shared-social-action-bar");
+    if (!actionBar || actionBar.querySelector(".ai-summarize-btn")) return;
 
-    const btn = createButton("📝 Summarize", "ai-summarize-btn");
-    btn.style.marginLeft = "8px";
-    btn.style.display = "inline-flex";
-    btn.style.alignItems = "center";
-    btn.style.background = "transparent";
-    btn.style.border = "none";
-    btn.style.color = "#666";
-    btn.style.fontWeight = "600";
-    btn.style.cursor = "pointer";
-    btn.style.padding = "8px";
-
-    btn.onclick = async (e) => {
+    const btn = createButton("Summarize", "ai-summarize-btn");
+    btn.style.cssText +=
+      "margin-left:8px;display:inline-flex;align-items:center;background:transparent;border:none;color:#666;font-weight:600;cursor:pointer;padding:8px;";
+    btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      await handleGeneration(btn, post, "summarizePost");
-    };
+      handleGeneration(btn, post, "summarizePost");
+    });
 
     actionBar.appendChild(btn);
   });
 }
 
 
-// --- FEATURE 3: IMPROVE POST BUTTONS ---
+// ===== Inject: post rewrite button =====
 function injectImproveButtons() {
   if (!settings.enableRewrite) return;
-
-  // Look for the main post creation modal
-  const modal = document.querySelector('.share-creation-state');
+  const modal = document.querySelector(".share-creation-state");
   if (!modal) return;
 
   const editor = modal.querySelector('[role="textbox"]');
   if (!editor) return;
 
-  // Find the footer area to inject the button
-  const footer = modal.querySelector('.share-creation-state__bottom-container') ||
-    modal.querySelector('.share-box-v2__bottom-container');
+  const footer =
+    modal.querySelector(".share-creation-state__bottom-container") ||
+    modal.querySelector(".share-box-v2__bottom-container");
+  if (!footer || footer.querySelector(".ai-rewrite-btn")) return;
 
-  if (!footer || footer.querySelector('.ai-rewrite-btn')) return;
-
-  const btn = createButton("✨ Post Rewrite", "ai-rewrite-btn");
+  const btn = createButton("Post Rewrite", "ai-rewrite-btn");
   btn.style.margin = "10px 0";
-
-  btn.onclick = async (e) => {
+  btn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    await handleGeneration(btn, editor, "rewritePost");
-  };
+    handleGeneration(btn, editor, "rewritePost");
+  });
 
-  if (footer.firstChild) {
-    footer.insertBefore(btn, footer.firstChild);
-  } else {
-    footer.appendChild(btn);
-  }
+  if (footer.firstChild) footer.insertBefore(btn, footer.firstChild);
+  else footer.appendChild(btn);
 }
 
-// --- FEATURE 4: MESSAGE REPLY BUTTONS ---
+
+// ===== Inject: message reply buttons =====
 function injectMessageButtons() {
-  // Select message inputs
-  const editors = document.querySelectorAll('.msg-form__contenteditable[role="textbox"], .msg-form__message-text-editor [role="textbox"]');
+  const editors = document.querySelectorAll(
+    '.msg-form__contenteditable[role="textbox"], .msg-form__message-text-editor [role="textbox"]'
+  );
 
   editors.forEach(editor => {
-    // Find the container (usually the form)
-    const form = editor.closest('form');
+    const form = editor.closest("form");
     if (!form) return;
 
-    // Find the Send button
-    const sendBtn = form.querySelector('.msg-form__send-button');
-    if (!sendBtn || sendBtn.parentElement.querySelector('.ai-msg-reply-btn')) return;
+    const sendBtn = form.querySelector(".msg-form__send-button");
+    if (!sendBtn || sendBtn.parentElement.querySelector(".ai-msg-reply-btn")) return;
 
-    // Create Button
-    const btn = createButton("✨ Smart Reply", "ai-msg-reply-btn");
-    btn.style.marginRight = "8px";
-    btn.style.padding = "4px 10px";
-    btn.style.fontSize = "12px";
-
-    btn.onclick = async (e) => {
+    const btn = createButton("Smart Reply", "ai-msg-reply-btn");
+    btn.style.cssText += "margin-right:8px;padding:4px 10px;font-size:12px;";
+    btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      await handleGeneration(btn, editor, "generateMessageReply");
-    };
+      handleGeneration(btn, editor, "generateMessageReply");
+    });
 
-    // Inject BEFORE the Send button
     sendBtn.parentElement.insertBefore(btn, sendBtn);
   });
 }
 
 
-// --- CORE LOGIC ---
-
+// ===== Core: handle a generation request =====
 async function handleGeneration(btn, contextNode, action) {
   const originalText = btn.innerText;
-  btn.innerText = "⏳ Working...";
+  btn.innerText = "Working...";
   btn.disabled = true;
 
   try {
-    let postContent = "";
-    let parentComment = null;
-    let history = "";
+    const payload = { action };
 
     if (action === "generateComment") {
-      postContent = findPostText(contextNode);
-      parentComment = findParentComment(contextNode);
-      if (!postContent) throw new Error("Could not find post text.");
-    }
-    else if (action === "summarizePost") {
-      postContent = findPostText(contextNode); // contextNode is the post itself here
-      if (!postContent) throw new Error("Could not find post text.");
-    }
-    else if (action === "rewritePost") {
-      // contextNode is the editor (input box)
-      postContent = contextNode.innerText || contextNode.value || contextNode.textContent;
-      if (!postContent && contextNode.querySelector('p')) {
-        postContent = contextNode.querySelector('p').innerText;
-      }
-      if (!postContent || postContent.trim().length < 2) {
+      payload.postContent = findPostText(contextNode);
+      payload.parentComment = findParentComment(contextNode);
+      if (!payload.postContent) throw new Error("Could not find post text.");
+    } else if (action === "summarizePost") {
+      payload.postContent = findPostText(contextNode);
+      if (!payload.postContent) throw new Error("Could not find post text.");
+    } else if (action === "rewritePost") {
+      payload.postContent =
+        contextNode.innerText ||
+        contextNode.value ||
+        contextNode.textContent ||
+        contextNode.querySelector("p")?.innerText ||
+        "";
+      if (!payload.postContent || payload.postContent.trim().length < 2) {
         throw new Error("Please write some text to rewrite first.");
       }
-    }
-    else if (action === "generateMessageReply") {
-      history = findMessageHistory(contextNode);
-      if (!history) throw new Error("Could not read conversation history.");
+    } else if (action === "generateMessageReply") {
+      payload.history = findMessageHistory(contextNode);
+      if (!payload.history) throw new Error("Could not read conversation history.");
     }
 
-    // Send to Background
     if (!chrome.runtime?.id) {
-      alert("Extension updated. Please refresh this page to reconnect.");
+      showOverlay("Extension reloaded", "Please refresh this LinkedIn tab to reconnect.");
       return;
     }
 
-    const response = await chrome.runtime.sendMessage({
-      action: action,
-      postContent: postContent,
-      parentComment: parentComment,
-      history: history
-    });
+    const response = await chrome.runtime.sendMessage(payload);
+    if (!response?.success) throw new Error(response?.error || "Unknown error");
 
-    if (!response.success) throw new Error(response.error);
-
-    // Handle Result
     if (action === "summarizePost") {
-      alert("📌 SUMMARY:\n\n" + response.data);
+      showOverlay("Summary", response.data);
     } else if (action === "rewritePost") {
-      // Replace content for Post Rewrite (uses value/innerText)
-      if (contextNode.tagName === 'TEXTAREA' || contextNode.tagName === 'INPUT') {
-        contextNode.value = response.data;
-      } else {
-        contextNode.innerText = response.data;
-      }
-      contextNode.dispatchEvent(new Event('input', { bubbles: true }));
+      setEditorText(contextNode, response.data);
     } else {
-      // Comment AND Message Reply
-      // Use typing simulation to trigger "Send" button enablement
-      if (action === "generateMessageReply") {
-        // Optional: Clear previous content if needed, but be careful not to break listeners
-        // contextNode.innerText = "";
-      }
-      await simulateTyping(contextNode, response.data);
+      setEditorText(contextNode, response.data);
     }
-
   } catch (err) {
-    console.error(err);
-    alert("Error: " + err.message);
+    console.error("[LinkedIn AI]", err);
+    showOverlay("Error", err.message);
   } finally {
     btn.innerText = originalText;
     btn.disabled = false;
   }
 }
 
+
+// ===== Helpers =====
 function createButton(text, className) {
   const btn = document.createElement("button");
+  btn.type = "button";
   btn.className = className;
   btn.innerText = text;
-  btn.style.borderRadius = "16px";
-  btn.style.padding = "5px 12px";
-  btn.style.fontWeight = "600";
-  btn.style.cursor = "pointer";
-  btn.style.border = "1px solid #0a66c2";
-  btn.style.background = "#fff";
-  btn.style.color = "#0a66c2";
-  btn.style.fontSize = "14px";
-  btn.style.marginRight = "5px";
+  btn.style.cssText =
+    "border-radius:16px;padding:5px 12px;font-weight:600;cursor:pointer;" +
+    "border:1px solid #0a66c2;background:#fff;color:#0a66c2;font-size:14px;margin-right:5px;";
   return btn;
 }
 
 function findPostText(node) {
-  // Walk up to find the post container
-  const post = node.closest('.feed-shared-update-v2') ||
-    node.closest('.occludable-update') ||
-    node.closest('article');
+  // 1. Try known container selectors first (URN-based first; they're most stable).
+  const known =
+    node.closest('[data-urn^="urn:li:activity"]') ||
+    node.closest('[data-id^="urn:li:activity"]') ||
+    node.closest(".feed-shared-update-v2") ||
+    node.closest(".occludable-update") ||
+    node.closest("article") ||
+    node.closest('[role="article"]');
+  if (known) {
+    const text = extractTextFromPost(known);
+    if (text) return text;
+  }
 
-  if (!post) return null;
+  // 2. Fallback: walk up from the editor. Find the nearest ancestor whose own
+  //    text content is substantial (>40 chars) but not the whole document.
+  //    This handles LinkedIn DOM renames without needing to track class names.
+  let cur = node.parentElement;
+  let bestText = null;
+  for (let depth = 0; cur && cur !== document.body && depth < 25; depth++, cur = cur.parentElement) {
+    const t = cur.innerText?.trim();
+    if (t && t.length > 40 && t.length < 5000) {
+      bestText = t;
+      // Keep walking — we want the LARGEST container that's still bounded,
+      // which is usually the post wrapper.
+    } else if (t && t.length >= 5000) {
+      break;
+    }
+  }
+  if (bestText) {
+    console.log("[LinkedIn AI] post text via walk-up fallback, len=", bestText.length);
+    return bestText.substring(0, 1500);
+  }
 
-  // Try multiple selectors for the text
-  const textNode = post.querySelector('.feed-shared-update-v2__description') ||
-    post.querySelector('.feed-shared-text') ||
-    post.querySelector('.update-components-text');
+  console.warn("[LinkedIn AI] could not find any post text near editor", node);
+  return null;
+}
 
-  return textNode ? textNode.innerText : post.innerText.substring(0, 500);
+function extractTextFromPost(post) {
+  const textNode =
+    post.querySelector(".update-components-text") ||
+    post.querySelector(".feed-shared-update-v2__description") ||
+    post.querySelector(".feed-shared-update-v2__commentary") ||
+    post.querySelector(".update-components-update-v2__commentary") ||
+    post.querySelector(".feed-shared-text") ||
+    post.querySelector(".feed-shared-inline-show-more-text") ||
+    post.querySelector('span[dir="ltr"]');
+  if (textNode) {
+    const text = textNode.innerText.trim();
+    if (text.length >= 2) return text;
+  }
+  const fallback = post.innerText?.trim();
+  return fallback && fallback.length >= 2 ? fallback.substring(0, 1500) : null;
 }
 
 function findParentComment(node) {
-  const comment = node.closest('.comments-comment-item');
+  const comment = node.closest(".comments-comment-item");
   if (!comment) return null;
-
-  const text = comment.querySelector('.comments-comment-item__main-content');
+  const text = comment.querySelector(".comments-comment-item__main-content");
   return text ? text.innerText : null;
 }
 
 function findMessageHistory(node) {
-  // 1. Find the message list container
-  // Try multiple selectors for the conversation window
-  const msgWindow = node.closest('.msg-convo-wrapper') ||
-    node.closest('.msg-overlay-conversation-bubble') ||
-    document.querySelector('.msg-s-message-list-container'); // Fallback to global active list
-
+  const msgWindow =
+    node.closest(".msg-convo-wrapper") ||
+    node.closest(".msg-overlay-conversation-bubble") ||
+    document.querySelector(".msg-s-message-list-container");
   if (!msgWindow) return null;
 
-  // 2. Find all message bubbles
-  // LinkedIn uses different classes for message bodies
-  const messages = msgWindow.querySelectorAll('.msg-s-event-listitem__body, .msg-s-message-group__body, .msg-s-event-listitem__message-bubble');
-
+  const messages = msgWindow.querySelectorAll(
+    ".msg-s-event-listitem__body, .msg-s-message-group__body, .msg-s-event-listitem__message-bubble"
+  );
   if (messages.length === 0) return null;
 
-  // 3. Extract text from the last 5 messages
-  let historyText = "";
-  const maxMessages = 5;
-  const start = Math.max(0, messages.length - maxMessages);
-
+  const start = Math.max(0, messages.length - 5);
+  let out = "";
   for (let i = start; i < messages.length; i++) {
     const msg = messages[i];
-    // Determine sender: check for "mine" class in parent hierarchy
-    const isMine = msg.closest('.msg-s-message-group--is-mine') ||
-      msg.closest('.msg-s-event-listitem--me');
-
-    const sender = isMine ? "Me" : "Them";
-    historyText += `${sender}: ${msg.innerText.trim()}\n`;
+    const isMine =
+      msg.closest(".msg-s-message-group--is-mine") ||
+      msg.closest(".msg-s-event-listitem--me");
+    out += `${isMine ? "Me" : "Them"}: ${msg.innerText.trim()}\n`;
   }
-
-  return historyText;
+  return out;
 }
 
-async function simulateTyping(editor, text) {
-  editor.focus();
-  // Clear existing text if it's a message reply to avoid appending
-  // We use execCommand 'delete' to respect the editor's state
-  if (editor.innerText.trim().length > 0) {
-    document.execCommand('selectAll', false, null);
-    document.execCommand('delete', false, null);
+// One-shot text insertion. Replaces the per-character typing loop.
+// We still use document.execCommand("insertText") because Quill/contenteditable
+// editors on LinkedIn react reliably to it; the modern InputEvent replacement
+// is not consistently honored by Quill yet.
+function setEditorText(editor, text) {
+  if (editor.tagName === "TEXTAREA" || editor.tagName === "INPUT") {
+    editor.value = text;
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
   }
 
-  for (const char of text) {
-    document.execCommand("insertText", false, char);
-    await new Promise(r => setTimeout(r, 5 + Math.random() * 10)); // Faster typing
+  editor.focus();
+
+  const sel = window.getSelection();
+  if (sel) {
+    sel.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    sel.addRange(range);
   }
+
+  // Single insert; replaces the prior char-by-char loop. Saves ~1–3s per
+  // generation and avoids stressing the editor's reactivity layer.
+  document.execCommand("insertText", false, text);
+}
+
+function showOverlay(title, body) {
+  document.querySelector(".ai-overlay")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "ai-overlay";
+
+  const card = document.createElement("div");
+  card.className = "ai-overlay-card";
+
+  const header = document.createElement("div");
+  header.className = "ai-overlay-header";
+  const titleEl = document.createElement("span");
+  titleEl.textContent = title;
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "ai-overlay-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "×";
+  header.append(titleEl, closeBtn);
+
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "ai-overlay-body";
+  bodyEl.textContent = body;
+
+  card.append(header, bodyEl);
+  overlay.appendChild(card);
+
+  closeBtn.addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  const onKey = (e) => { if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", onKey); } };
+  document.addEventListener("keydown", onKey);
+
+  document.body.appendChild(overlay);
 }

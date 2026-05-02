@@ -1,125 +1,147 @@
 /**
  * LinkedIn AI Commenter - Background Script
- * Handles requests from content.js and calls Groq API via Cloudflare Worker
+ * Calls a local Ollama instance directly. No remote API.
  */
 
-// ===== CONFIGURATION =====
-// Update these with your actual values from Cloudflare Worker
-const WORKER_URL = "linkedin-ai-proxy.info-rana012.workers.dev";  // e.g., "linkedin-ai-proxy.info-rana012.workers.dev"
-const EXTENSION_SECRET = "myapp-xK9q2-linkedin-2024";  // Must match EXTENSION_SECRET in Cloudflare worker
+importScripts("defaults.js");
 
 // ===== MESSAGE LISTENER =====
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "generateComment") {
     generateContent(
       request.parentComment ? "reply" : "comment",
-      {
-        postContent: request.postContent,
-        parentComment: request.parentComment
-      }
+      { postContent: request.postContent, parentComment: request.parentComment }
     )
-      .then(data => sendResponse({ success: true, data: data }))
+      .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 
   if (request.action === "summarizePost") {
     generateContent("summarize", { postContent: request.postContent })
-      .then(data => sendResponse({ success: true, data: data }))
+      .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 
   if (request.action === "rewritePost") {
     generateContent("rewrite", { postContent: request.postContent })
-      .then(data => sendResponse({ success: true, data: data }))
+      .then(data => sendResponse({ success: true, data }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 
   if (request.action === "generateMessageReply") {
     generateContent("message", { history: request.history })
-      .then(data => sendResponse({ success: true, data: data }))
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === "ollamaTestConnection") {
+    testOllamaConnection(request.ollamaUrl, request.ollamaModel)
+      .then(result => sendResponse({ success: true, data: result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
 });
 
-/**
- * Generate content by calling Groq API via Cloudflare Worker
- * @param {string} action - The action type: "comment", "reply", "summarize", "rewrite", or "message"
- * @param {object} context - Context data for the action
- */
+function buildUserPrompt(action, context) {
+  switch (action) {
+    case "comment":
+      return `Post:\n"""\n${context.postContent}\n"""`;
+    case "reply":
+      return `Post:\n"""\n${context.postContent}\n"""\n\nComment to reply to:\n"""\n${context.parentComment}\n"""`;
+    case "summarize":
+      return `Post:\n"""\n${context.postContent}\n"""`;
+    case "rewrite":
+      return `Draft post:\n"""\n${context.postContent}\n"""`;
+    case "message":
+      return `Conversation so far:\n"""\n${context.history}\n"""`;
+    default:
+      throw new Error(`Invalid action: ${action}`);
+  }
+}
+
+const PROMPT_KEY_BY_ACTION = {
+  comment: "promptComment",
+  reply: "promptReply",
+  summarize: "promptSummarize",
+  rewrite: "promptRewrite",
+  message: "promptMessage"
+};
+
 async function generateContent(action, context) {
-  // Validate configuration
-  if (WORKER_URL === "YOUR_WORKER_URL_HERE" || EXTENSION_SECRET === "YOUR_EXTENSION_SECRET_HERE") {
-    throw new Error("Worker URL or EXTENSION_SECRET not configured. Please update background.js with your Cloudflare Worker details.");
-  }
+  const settings = await chrome.storage.local.get(self.ALL_DEFAULTS);
+  const systemPrompt = settings[PROMPT_KEY_BY_ACTION[action]];
+  const userPrompt = buildUserPrompt(action, context);
 
-  let prompt;
+  const url = `${settings.ollamaUrl.replace(/\/+$/, "")}/api/chat`;
+  const body = {
+    model: settings.ollamaModel,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ],
+    stream: false,
+    options: { temperature: 0.7 }
+  };
 
-  // Build prompt based on action
-  if (action === "comment") {
-    prompt = context.postContent;
-  } else if (action === "reply") {
-    prompt = `Post: "${context.postContent}"\n\nComment to reply to: "${context.parentComment}"`;
-  } else if (action === "summarize") {
-    prompt = context.postContent;
-  } else if (action === "rewrite") {
-    prompt = context.postContent;
-  } else if (action === "message") {
-    prompt = context.history;
-  } else {
-    throw new Error(`Invalid action: ${action}`);
-  }
+  console.log(`[Ollama] ${action} → ${url} (${settings.ollamaModel})`);
 
-  // Call Cloudflare Worker (Groq proxy)
+  let response;
   try {
-    console.log(`Sending ${action} request to worker:`, WORKER_URL);
-
-    const response = await fetch(WORKER_URL, {
+    response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Extension-Token": EXTENSION_SECRET
-      },
-      body: JSON.stringify({
-        action: action,
-        prompt: prompt
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error("Worker Error:", response.status, errorData);
-
-      if (response.status === 401) {
-        throw new Error("Authentication failed. Check your EXTENSION_SECRET in background.js.");
-      } else if (response.status === 400) {
-        throw new Error(`Bad request: ${errorData.error || "Invalid parameters"}`);
-      } else if (response.status === 500) {
-        throw new Error(`Server error: ${errorData.error || "Worker configuration issue"}`);
-      } else {
-        throw new Error(`HTTP ${response.status}: ${errorData.error || "Unknown error"}`);
-      }
-    }
-
-    const result = await response.json();
-    console.log("Worker Response:", result);
-
-    // Extract the result from the response
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    if (result.result) {
-      return result.result.trim();
-    }
-
-    throw new Error("Unexpected response format from worker");
-
-  } catch (error) {
-    console.error("Generation failed:", error);
-    throw new Error("Failed to generate content: " + error.message);
+  } catch (err) {
+    throw new Error(
+      `Could not reach Ollama at ${settings.ollamaUrl}. Is Ollama running? ` +
+      `Start it with "ollama serve" and ensure the model "${settings.ollamaModel}" is pulled. (${err.message})`
+    );
   }
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    if (response.status === 404) {
+      throw new Error(
+        `Model "${settings.ollamaModel}" not found. Pull it with: ollama pull ${settings.ollamaModel}`
+      );
+    }
+    throw new Error(`Ollama error ${response.status}: ${errText || response.statusText}`);
+  }
+
+  const result = await response.json();
+  const content = result?.message?.content;
+  if (!content) {
+    throw new Error("Ollama returned no content. Response: " + JSON.stringify(result));
+  }
+  return content.trim();
+}
+
+async function testOllamaConnection(ollamaUrl, ollamaModel) {
+  const base = ollamaUrl.replace(/\/+$/, "");
+  // 1) Check server reachable via /api/tags
+  let tagsResp;
+  try {
+    tagsResp = await fetch(`${base}/api/tags`, { method: "GET" });
+  } catch (err) {
+    throw new Error(`Cannot reach Ollama at ${ollamaUrl}: ${err.message}`);
+  }
+  if (!tagsResp.ok) {
+    throw new Error(`Ollama responded with ${tagsResp.status} on /api/tags`);
+  }
+  const tags = await tagsResp.json();
+  const models = (tags.models || []).map(m => m.name);
+  const hasModel = models.some(name => name === ollamaModel || name.startsWith(ollamaModel + ":"));
+  return {
+    reachable: true,
+    models,
+    hasModel,
+    message: hasModel
+      ? `Connected. Model "${ollamaModel}" is available.`
+      : `Connected, but model "${ollamaModel}" is not pulled. Run: ollama pull ${ollamaModel}`
+  };
 }
