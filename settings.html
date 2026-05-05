@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>LinkedIn AI Assistant — Settings</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      font-family: 'Inter', 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 30px;
+      background: linear-gradient(135deg, #f6f8fa 0%, #e9ecef 100%);
+      color: #333;
+    }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 4px 0;
+      font-size: 22px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px 22px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      margin-bottom: 18px;
+    }
+
+    .card h2 {
+      margin: 0 0 14px 0;
+      font-size: 15px;
+      color: #1a1a1a;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 6px;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .row > div {
+      flex: 1;
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      background: #fafbfc;
+      color: #1a1a1a;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 90px;
+      line-height: 1.45;
+    }
+
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: #0a66c2;
+      background: white;
+    }
+
+    .prompt-block {
+      margin-bottom: 16px;
+    }
+
+    .prompt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .prompt-header label {
+      margin-bottom: 0;
+    }
+
+    .reset-link {
+      font-size: 11px;
+      color: #0a66c2;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .reset-link:hover {
+      text-decoration: underline;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button.primary {
+      background: #0a66c2;
+      color: white;
+      border: none;
+      border-radius: 16px;
+      padding: 8px 18px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button.primary:hover { background: #084f9c; }
+
+    button.secondary {
+      background: white;
+      color: #0a66c2;
+      border: 1px solid #0a66c2;
+      border-radius: 16px;
+      padding: 7px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    button.secondary:hover { background: #e8f4fd; }
+
+    .status {
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    .status.ok { color: #1a7f37; }
+    .status.err { color: #cf222e; }
+
+    .feature-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .feature-row:last-child { border-bottom: none; }
+
+    .feature-title { font-size: 13px; font-weight: 600; }
+    .feature-desc { font-size: 11px; color: #666; margin-top: 2px; }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc;
+      transition: .3s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    input:checked + .slider { background: linear-gradient(90deg, #0a66c2, #0077b5); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    code {
+      background: #eef1f4;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>LinkedIn AI Assistant — Settings</h1>
+    <div class="subtitle">Runs locally via Ollama. Nothing leaves your machine.</div>
+
+    <div class="card">
+      <h2>Ollama connection</h2>
+      <div class="row">
+        <div>
+          <label for="ollamaUrl">Ollama URL</label>
+          <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
+        </div>
+        <div>
+          <label for="ollamaModel">Model</label>
+          <input type="text" id="ollamaModel" placeholder="llama3.1:8b">
+        </div>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="testBtn">Test connection</button>
+        <span class="status" id="testStatus"></span>
+      </div>
+      <div class="hint">
+        <strong>Required:</strong> launch Ollama with
+        <code>OLLAMA_ORIGINS="chrome-extension://*" ollama serve</code>
+        so it accepts CORS requests from this extension. Pull a model with
+        <code>ollama pull llama3.1:8b</code>.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Prompts</h2>
+      <div class="hint" style="margin-bottom: 14px;">
+        These are the system prompts sent to the model. Edit them to control tone, length, or style. Click "Reset" on any block to restore the default.
+      </div>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <label for="promptComment">Comment on a post</label>
+          <button class="reset-link" data-reset="promptComment">Reset</button>
+        </div>
+        <textarea id="promptComment"></textarea>
+      </div>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <label for="promptReply">Reply to a comment</label>
+          <button class="reset-link" data-reset="promptReply">Reset</button>
+        </div>
+        <textarea id="promptReply"></textarea>
+      </div>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <label for="promptSummarize">Summarize a post</label>
+          <button class="reset-link" data-reset="promptSummarize">Reset</button>
+        </div>
+        <textarea id="promptSummarize"></textarea>
+      </div>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <label for="promptRewrite">Rewrite a draft post</label>
+          <button class="reset-link" data-reset="promptRewrite">Reset</button>
+        </div>
+        <textarea id="promptRewrite"></textarea>
+      </div>
+
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <label for="promptMessage">Reply in DM</label>
+          <button class="reset-link" data-reset="promptMessage">Reset</button>
+        </div>
+        <textarea id="promptMessage"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Features</h2>
+      <div class="feature-row">
+        <div>
+          <div class="feature-title">Comment Assistant</div>
+          <div class="feature-desc">Smart comments on posts</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="toggleComment"><span class="slider"></span></label>
+      </div>
+      <div class="feature-row">
+        <div>
+          <div class="feature-title">Reply Assistant</div>
+          <div class="feature-desc">Assist with replies</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="toggleReply"><span class="slider"></span></label>
+      </div>
+      <div class="feature-row">
+        <div>
+          <div class="feature-title">Post Summarizer</div>
+          <div class="feature-desc">Summarize long posts</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="toggleSummarizer"><span class="slider"></span></label>
+      </div>
+      <div class="feature-row">
+        <div>
+          <div class="feature-title">Post Rewrite</div>
+          <div class="feature-desc">Polish your drafts</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="toggleRewrite"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="saveBtn">Save</button>
+      <span class="status" id="saveStatus"></span>
+    </div>
+  </div>
+
+  <script src="defaults.js"></script>
+  <script src="settings.js"></script>
+</body>
+
+</html>
