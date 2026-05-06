@@ -1,9 +1,15 @@
 
-// Shared default settings for LinkedIn AI Commenter (Ollama).
+// Shared default settings for LinkedIn AI Commenter.
 // Loaded by background.js via importScripts() and by settings.html via <script>.
+
+const DEFAULT_PROVIDER = "ollama"; // "ollama" | "gemini" | "claude"
 
 const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 const DEFAULT_OLLAMA_MODEL = "llama3.1:8b";
+
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+
+const DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5-20251001";
 
 const DEFAULT_PROMPTS = {
   comment:
@@ -30,8 +36,13 @@ const DEFAULT_FEATURE_TOGGLES = {
 };
 
 const ALL_DEFAULTS = {
+  provider: DEFAULT_PROVIDER,
   ollamaUrl: DEFAULT_OLLAMA_URL,
   ollamaModel: DEFAULT_OLLAMA_MODEL,
+  geminiApiKey: "",
+  geminiModel: DEFAULT_GEMINI_MODEL,
+  claudeApiKey: "",
+  claudeModel: DEFAULT_CLAUDE_MODEL,
   promptComment: DEFAULT_PROMPTS.comment,
   promptReply: DEFAULT_PROMPTS.reply,
   promptSummarize: DEFAULT_PROMPTS.summarize,

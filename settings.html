@@ -61,7 +61,7 @@
       flex: 1;
     }
 
-    input[type="text"], textarea {
+    input[type="text"], input[type="password"], select, textarea {
       width: 100%;
       box-sizing: border-box;
       font-family: inherit;
@@ -79,11 +79,14 @@
       line-height: 1.45;
     }
 
-    input[type="text"]:focus, textarea:focus {
+    input[type="text"]:focus, input[type="password"]:focus, select:focus, textarea:focus {
       outline: none;
       border-color: #0a66c2;
       background: white;
     }
+
+    .provider-section { display: none; }
+    .provider-section.active { display: block; }
 
     .prompt-block {
       margin-bottom: 16px;
@@ -216,29 +219,78 @@
 <body>
   <div class="wrap">
     <h1>LinkedIn AI Assistant — Settings</h1>
-    <div class="subtitle">Runs locally via Ollama. Nothing leaves your machine.</div>
+    <div class="subtitle">Choose a local Ollama model, the Gemini API, or the Claude API.</div>
 
     <div class="card">
-      <h2>Ollama connection</h2>
-      <div class="row">
-        <div>
-          <label for="ollamaUrl">Ollama URL</label>
-          <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
+      <h2>AI provider</h2>
+      <div>
+        <label for="provider">Provider</label>
+        <select id="provider">
+          <option value="ollama">Ollama (local)</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="claude">Anthropic Claude</option>
+        </select>
+      </div>
+
+      <div class="provider-section" id="section-ollama" style="margin-top: 16px;">
+        <div class="row">
+          <div>
+            <label for="ollamaUrl">Ollama URL</label>
+            <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
+          </div>
+          <div>
+            <label for="ollamaModel">Model</label>
+            <input type="text" id="ollamaModel" placeholder="llama3.1:8b">
+          </div>
         </div>
-        <div>
-          <label for="ollamaModel">Model</label>
-          <input type="text" id="ollamaModel" placeholder="llama3.1:8b">
+        <div class="actions">
+          <button class="secondary" id="testOllamaBtn">Test connection</button>
+          <span class="status" id="testOllamaStatus"></span>
+        </div>
+        <div class="hint">
+          <strong>Required:</strong> launch Ollama with
+          <code>OLLAMA_ORIGINS="chrome-extension://*" ollama serve</code>
+          so it accepts CORS requests from this extension. Pull a model with
+          <code>ollama pull llama3.1:8b</code>.
         </div>
       </div>
-      <div class="actions">
-        <button class="secondary" id="testBtn">Test connection</button>
-        <span class="status" id="testStatus"></span>
+
+      <div class="provider-section" id="section-gemini" style="margin-top: 16px;">
+        <div>
+          <label for="geminiApiKey">Gemini API key</label>
+          <input type="password" id="geminiApiKey" placeholder="AIza…" autocomplete="off">
+        </div>
+        <div style="margin-top: 12px;">
+          <label for="geminiModel">Model</label>
+          <input type="text" id="geminiModel" placeholder="gemini-2.5-flash">
+        </div>
+        <div class="actions" style="margin-top: 12px;">
+          <button class="secondary" id="testGeminiBtn">Test connection</button>
+          <span class="status" id="testGeminiStatus"></span>
+        </div>
+        <div class="hint">
+          Get an API key at <code>aistudio.google.com/app/apikey</code>. The key is stored
+          in your browser's local storage and only sent to Google's API.
+        </div>
       </div>
-      <div class="hint">
-        <strong>Required:</strong> launch Ollama with
-        <code>OLLAMA_ORIGINS="chrome-extension://*" ollama serve</code>
-        so it accepts CORS requests from this extension. Pull a model with
-        <code>ollama pull llama3.1:8b</code>.
+
+      <div class="provider-section" id="section-claude" style="margin-top: 16px;">
+        <div>
+          <label for="claudeApiKey">Claude API key</label>
+          <input type="password" id="claudeApiKey" placeholder="sk-ant-…" autocomplete="off">
+        </div>
+        <div style="margin-top: 12px;">
+          <label for="claudeModel">Model</label>
+          <input type="text" id="claudeModel" placeholder="claude-haiku-4-5-20251001">
+        </div>
+        <div class="actions" style="margin-top: 12px;">
+          <button class="secondary" id="testClaudeBtn">Test connection</button>
+          <span class="status" id="testClaudeStatus"></span>
+        </div>
+        <div class="hint">
+          Get an API key at <code>console.anthropic.com</code>. The key is stored in
+          your browser's local storage and only sent to Anthropic's API.
+        </div>
       </div>
     </div>
 
