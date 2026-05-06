@@ -1,302 +1,207 @@
-# 🤖 LinkedIn AI Commenter - Chrome Extension
+# 🤖 LinkedIn AI Commenter — Chrome Extension
 
-> **Supercharge your LinkedIn engagement with AI-powered comments, replies, and post improvements!**
+> **Generate LinkedIn comments, replies, summaries, and post drafts with the AI of your choice — local Ollama, Google Gemini, or Anthropic Claude.**
 
 ---
 
 ## 🌟 Overview
 
-**LinkedIn AI Commenter** is a Chrome extension that uses Google's Gemini AI to help you engage more effectively on LinkedIn. It generates human-like comments, replies, post summaries, and even rewrites your posts to make them more engaging - all with a single click!
+**LinkedIn AI Commenter** is a Chrome extension that injects AI-powered buttons into LinkedIn for commenting, replying, summarizing posts, rewriting drafts, and replying in DMs. You choose the AI provider:
 
-### Why Use This Extension?
+- **🖥️ Ollama (local)** — runs entirely on your machine, nothing leaves your computer
+- **✨ Google Gemini API** — fast and inexpensive, uses your own API key
+- **🧠 Anthropic Claude API** — high-quality writing, uses your own API key
 
-- ⏱️ **Save Time**: Generate thoughtful comments in seconds
-- 🎯 **Stay Relevant**: AI analyzes post content to create contextual responses
-- 💡 **Sound Smart**: Get unique perspectives and insights
-- 🚀 **Boost Engagement**: Increase your LinkedIn presence effortlessly
-- 🔒 **Secure**: Your API key stays safe on Cloudflare's servers
+You can also define multiple **personas** (e.g. "Personal" and "Company") so each LinkedIn account or voice can have its own set of system prompts. Switch persona from the popup before commenting.
 
 ---
 
 ## ✨ Features
 
-### 1. 💬 AI Comment Generation
-Generate unique, human-like comments on any LinkedIn post that avoid generic phrases and add relevant questions.
-
-### 2. 🔄 Smart Reply Assistant
-Reply to comments with appreciation and added value, including extra insights and follow-up questions.
-
-### 3. 📝 Post Summarizer
-Get quick 3-5 bullet point summaries of long LinkedIn posts.
-
-### 4. ✍️ Post Rewriter
-Transform your draft posts into viral-worthy content with compelling hooks, better formatting, and relevant hashtags.
-
-### 5. 💌 Smart Message Replies
-Generate professional replies in LinkedIn messages based on conversation history.
-
----
-
-## 🔧 How It Works
-
-```
-LinkedIn Page → Chrome Extension → Background Script → Cloudflare Worker → Google Gemini AI → Response
-```
-
-The extension uses a **Cloudflare Worker** as a secure proxy to keep your Google AI API key safe. The API key is stored on Cloudflare's servers, not in the extension where it could be extracted.
-
-**Benefits:**
-- 🔒 Security: API key never exposed
-- 🌍 Fast: Cloudflare's global edge network
-- 💰 Free: 100,000 requests/day
-- 🛡️ Protected: CORS and request validation
+| Feature | What it does |
+|---|---|
+| 💬 **Comment Assistant** | Generates a contextual comment for any post |
+| 🔄 **Reply Assistant** | Drafts a reply that engages directly with a comment |
+| 📝 **Post Summarizer** | Summarizes long posts into bullet points |
+| ✍️ **Post Rewrite** | Polishes your draft post for clarity and engagement |
+| 💌 **Smart DM Reply** | Drafts a reply to a LinkedIn direct message |
+| 🎭 **Personas** | Multiple named prompt sets — switch voice in one click |
+| 🔌 **Provider choice** | Local Ollama, Gemini API, or Claude API |
 
 ---
 
 ## 📥 Installation
 
-### Manual Installation (Developer Mode)
-
-1. **Download the Extension**
-   - Download this repository as ZIP and extract it
-
-2. **Open Chrome Extensions**
-   - Go to `chrome://extensions/`
-   - Enable **"Developer mode"** (top right)
-
-3. **Load the Extension**
-   - Click **"Load unpacked"**
-   - Select the extension folder
-   - Pin the extension icon (optional)
+1. Clone or download this repository.
+2. Visit `chrome://extensions/` and enable **Developer mode** (top-right).
+3. Click **Load unpacked** and select the project folder.
+4. Pin the extension icon for quick access.
 
 ---
 
-## 🚀 Setup Guide
+## 🚀 Setup
 
-### Quick Setup (4 Steps)
+Click the extension icon → **⚙️ Open Settings** to configure a provider.
 
-#### Step 1: Get Google AI API Key
+### Option A — Ollama (local, free, private)
 
-1. Go to: **https://aistudio.google.com/app/apikey**
-2. Sign in and click **"Create API Key"**
-3. Copy the API key (starts with `AIza...`)
+1. Install [Ollama](https://ollama.com).
+2. Pull a model:
+   ```
+   ollama pull llama3.1:8b
+   ```
+3. Start Ollama with the extension origin allowed (required for CORS):
+   ```
+   OLLAMA_ORIGINS="chrome-extension://*" ollama serve
+   ```
+4. In Settings, pick **Ollama (local)**, set the URL (`http://localhost:11434`) and model (`llama3.1:8b`).
+5. Click **Test connection**, then **Save**.
 
-#### Step 2: Set Up Cloudflare Worker
+### Option B — Google Gemini
 
-1. Go to: **https://dash.cloudflare.com/sign-up** (create free account)
-2. Navigate to **Workers & Pages** → **Create Worker**
-3. Name it (e.g., `linkedin-ai-proxy`) and deploy
-4. Click **"Edit Code"**, delete default code
-5. Copy all code from `worker.js` and paste
-6. Click **"Save and Deploy"**
+1. Get an API key at [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
+2. In Settings, pick **Google Gemini**, paste the key, set a model (default: `gemini-2.5-flash`).
+3. Click **Test connection**, then **Save**.
 
-#### Step 3: Add API Key to Worker
+### Option C — Anthropic Claude
 
-1. Go to **Settings** tab → **"Variables and Secrets"**
-2. Click **"Add variable"**
-3. Name: `GEMINI_API_KEY` (exactly this)
-4. Value: Paste your API key
-5. Click **"Encrypt"** and **"Save and Deploy"**
-6. Copy your worker URL
+1. Get an API key at [console.anthropic.com](https://console.anthropic.com).
+2. In Settings, pick **Anthropic Claude**, paste the key, set a model (default: `claude-haiku-4-5-20251001`).
+3. Click **Test connection**, then **Save**.
 
-#### Step 4: Update Extension
-
-1. Open `manifest.json`, update line 18 with your worker URL
-2. Open `background.js`, update line 123 with your worker URL
-3. Go to `chrome://extensions/` and reload the extension
-4. Test on LinkedIn!
-
-**📖 Detailed Setup Instructions**: See [README-CLOUDFLARE-SETUP.md](README-CLOUDFLARE-SETUP.md)
+> API keys are stored locally in `chrome.storage.local`. They are sent only to the provider's API.
 
 ---
 
-## 📱 Usage
+## 🎭 Personas
 
-### On LinkedIn Feed
+Each persona has its own set of five system prompts (comment, reply, summarize, rewrite, message). Useful when you switch between LinkedIn accounts (personal, company, side project).
 
-- **Comment**: Click "Add a comment" → Click **"✨ AI Comment"**
-- **Reply**: Click "Reply" on any comment → Click **"✨ Assist Reply"**
-- **Summarize**: Click **"📝 Summarize"** button on any post
+In **Settings → Personas & prompts**:
 
-### Creating Posts
+- **+ New persona** — adds a persona seeded with the default prompts. Edit them to define the voice.
+- **Rename** — change the label of the active persona.
+- **Delete** — remove the active persona (you must keep at least one).
+- **Active persona** dropdown — switching reloads its prompts into the editor.
 
-1. Click "Start a post"
-2. Write your draft
-3. Click **"✨ Post Rewrite"**
-4. Review and post!
+The popup shows an **Active persona** dropdown when you have more than one persona — pick the right voice before clicking an AI button on LinkedIn.
 
-### In Messages
+---
 
-1. Open any conversation
-2. Click **"✨ Smart Reply"**
-3. Review and send!
+## 📱 Usage on LinkedIn
 
-### Settings
+- **Comment**: Click "Add a comment" on a post → click **✨ AI Comment**.
+- **Reply**: Click "Reply" under any comment → click **✨ Assist Reply**.
+- **Summarize**: Click **📝 Summarize** on a post.
+- **Post draft**: Start a post, write a draft, click **✨ Post Rewrite**.
+- **Direct message**: Open a conversation, click **✨ Smart Reply**.
 
-Click the extension icon to toggle features on/off.
+Each feature can be toggled on/off from the popup.
 
 ---
 
 ## 🏗️ Architecture
 
-### File Structure
-
 ```
-linkedin-ai-commenter/
-├── manifest.json              # Extension configuration
-├── background.js              # Service worker (API calls)
-├── content.js                 # Injects buttons on LinkedIn
-├── styles.css                 # Button styling
-├── options.html/js            # Settings page
-├── worker.js                  # Cloudflare Worker code
-├── README.md                  # Main documentation
-└── README-CLOUDFLARE-SETUP.md # Detailed setup guide
+LinkedIn page  →  content.js (injects buttons)
+                       │
+                       ▼
+              background.js (service worker)
+                       │
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+     Ollama        Gemini API     Claude API
+   (localhost)    (Google)       (Anthropic)
 ```
 
-### Components
+### File structure
 
-1. **Content Script** (`content.js`): Detects LinkedIn elements and injects AI buttons
-2. **Background Script** (`background.js`): Handles API calls and prompt construction
-3. **Cloudflare Worker** (`worker.js`): Secure proxy that stores API key and calls Gemini
-4. **Options Page**: Settings interface for toggling features
-
----
-
-## ⚙️ Configuration
-
-### Extension Settings
-
-Access via extension icon. Toggle features:
-- AI Comment ✅
-- Smart Reply ✅
-- Post Summarizer ✅
-- Post Rewriter ✅
-
-### Worker Configuration
-
-Edit `worker.js` to customize:
-
-**AI Model:**
-```javascript
-const GEMINI_MODEL = 'gemini-1.5-flash'; // Fast (default)
-// or 'gemini-1.5-pro' for better quality
 ```
-
-**Creativity:**
-```javascript
-temperature: 0.9, // 0.0 (focused) to 1.0 (creative)
+.
+├── manifest.json              Extension config & host permissions
+├── background.js              Service worker — routes to the chosen provider
+├── content.js                 Injects AI buttons into LinkedIn
+├── linkedin-probe-blocker.js  Blocks LinkedIn telemetry probes
+├── defaults.js                Shared defaults & persona helpers
+├── settings.html / settings.js   Full settings page
+├── options.html / options.js     Toolbar popup (toggles + persona switch)
+├── styles.css                 Button styling
+└── rules.json                 declarativeNetRequest rules
 ```
 
 ---
 
-## 🔒 Privacy & Security
+## ⚙️ Configuration reference
 
-### Data Collection
+| Setting | Stored as | Notes |
+|---|---|---|
+| Provider | `provider` | `"ollama"` \| `"gemini"` \| `"claude"` |
+| Ollama URL / model | `ollamaUrl`, `ollamaModel` | Local server only |
+| Gemini key / model | `geminiApiKey`, `geminiModel` | Sent to `generativelanguage.googleapis.com` |
+| Claude key / model | `claudeApiKey`, `claudeModel` | Sent to `api.anthropic.com` |
+| Personas | `personas` | Array of `{id, name, prompts}` |
+| Active persona | `activePersonaId` | One of the persona IDs |
+| Feature toggles | `enableComment`, `enableReply`, `enableSummarizer`, `enableRewrite` | |
 
-**None.** This extension does NOT:
-- Collect personal data
-- Track your activity
-- Store LinkedIn content
-- Send data to third parties (except Google Gemini API)
+All settings live in `chrome.storage.local` — they don't sync, leave the device, or get backed up to any server.
 
-### What's Sent to Google?
+---
 
-Only content you explicitly request to process (post text, comments, drafts). Subject to [Google's Privacy Policy](https://policies.google.com/privacy).
+## 🔒 Privacy
 
-### API Key Security
-
-Your API key is:
-- ✅ Stored on Cloudflare's secure servers
-- ✅ Encrypted in environment variables
-- ✅ Never exposed in extension code
-- ✅ Protected by CORS policies
+- **Ollama**: requests stay on your machine. Nothing leaves localhost.
+- **Gemini / Claude**: post or draft text you act on is sent to the provider's API, along with the system prompt of the active persona. API keys are sent in the request headers. The extension does not log, proxy, or telemetry-send anything.
+- The extension does not collect analytics or read your LinkedIn profile, connections, or DMs unless you click an AI button on that specific item.
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Buttons Don't Appear
-- Reload extension at `chrome://extensions/`
-- Refresh LinkedIn page
-- Check extension settings
+**Buttons don't appear on LinkedIn**
+- Reload the extension at `chrome://extensions/` and refresh the LinkedIn tab.
+- Check that the relevant feature toggle is on in the popup.
 
-### "Failed to connect to AI"
-- Verify worker URL in `background.js` line 123
-- Check worker is deployed in Cloudflare dashboard
-- Test worker URL in browser
+**Ollama: "Could not reach Ollama"**
+- Confirm `ollama serve` is running.
+- Confirm you started it with `OLLAMA_ORIGINS="chrome-extension://*"` — without this, the browser blocks the request as a CORS error.
+- Confirm the model is pulled: `ollama list`.
 
-### "API key not configured"
-- Verify variable name is exactly `GEMINI_API_KEY`
-- Re-enter API key in worker settings
-- Click "Save and Deploy"
+**Gemini / Claude: "API key rejected (401/403)"**
+- Re-copy the key from the provider console; whitespace can sneak in.
+- For Gemini, verify the API is enabled for your Google project.
+- For Claude, verify the key is active and has credit.
 
-### "Gemini API Error (400/401)"
-- Verify API key at https://aistudio.google.com/app/apikey
-- Enable API: https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com
-- Check quota limits (15 req/min, 1,500/day)
-
-**📖 More Solutions**: See [README-CLOUDFLARE-SETUP.md](README-CLOUDFLARE-SETUP.md#troubleshooting)
+**Test connection succeeds but generation fails**
+- The model name must match exactly (e.g. `gemini-2.5-flash`, `claude-haiku-4-5-20251001`).
+- For Gemini, content may be blocked by safety filters on certain posts — try a different post or model.
 
 ---
 
 ## ❓ FAQ
 
-**Is this free?**
-Yes! Google AI Studio (1,500 req/day) and Cloudflare Workers (100,000 req/day) are both free.
+**Is it free?**
+Ollama is free and local. Gemini and Claude bill against your own API account; check each provider's pricing.
+
+**Can I use multiple LinkedIn accounts?**
+Yes — that's what personas are for. Create one persona per account/voice, write its prompts, and switch from the popup.
 
 **Will I get banned from LinkedIn?**
-No. You still review and post comments manually.
+The extension only injects UI; you still review and submit every comment yourself. As with any LinkedIn automation, use judgement.
 
-**Can I customize AI responses?**
-Yes! Edit prompts in `background.js` lines 34-120.
+**Does it work on mobile?**
+No — Chrome extensions only run on desktop browsers.
 
-**Does this work on mobile?**
-No, Chrome extensions only work on desktop browsers.
-
-**What's the difference between gemini-1.5-flash and pro?**
-- **flash**: Faster, good quality (default)
-- **pro**: Slower, excellent quality
+**Where are my API keys stored?**
+In `chrome.storage.local`, scoped to the extension. They are sent only to the provider you selected.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions welcome! 
-- Report bugs via Issues
-- Suggest features
-- Submit pull requests
-- Improve documentation
+Issues, feature ideas, and PRs are welcome.
 
 ---
 
 ## 📄 License
 
-MIT License - See full license in repository.
-
----
-
-## 🙏 Acknowledgments
-
-- **Google Gemini AI**: Powerful AI model
-- **Cloudflare**: Free Workers platform
-- **You**: For using this extension!
-
----
-
-## 🗺️ Roadmap
-
-### Version 1.1
-- Multiple AI providers (OpenAI, Claude)
-- Custom prompt templates
-- Keyboard shortcuts
-
-### Version 2.0
-- Analytics dashboard
-- Tone selector
-- Multi-language support
-
----
-
-**Made with ❤️ for the LinkedIn community**
-
-*Happy networking! 🚀*
+MIT — see the repository for the full license text.
