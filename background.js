@@ -82,7 +82,15 @@ function buildUserPrompt(action, context) {
   }
 }
 
-const PROMPT_KEY_BY_ACTION = {
+const ACTION_TO_PROMPT_KEY = {
+  comment: "comment",
+  reply: "reply",
+  summarize: "summarize",
+  rewrite: "rewrite",
+  message: "message"
+};
+
+const LEGACY_PROMPT_FIELD = {
   comment: "promptComment",
   reply: "promptReply",
   summarize: "promptSummarize",
@@ -90,9 +98,21 @@ const PROMPT_KEY_BY_ACTION = {
   message: "promptMessage"
 };
 
+function resolveSystemPrompt(settings, action) {
+  const key = ACTION_TO_PROMPT_KEY[action];
+  const personas = Array.isArray(settings.personas) ? settings.personas : [];
+  if (personas.length) {
+    const active = personas.find(p => p.id === settings.activePersonaId) || personas[0];
+    const fromPersona = active && active.prompts && active.prompts[key];
+    if (fromPersona) return fromPersona;
+  }
+  // Fallback to legacy top-level field, then built-in default.
+  return settings[LEGACY_PROMPT_FIELD[action]] || self.DEFAULT_PROMPTS[key];
+}
+
 async function generateContent(action, context) {
   const settings = await chrome.storage.local.get(self.ALL_DEFAULTS);
-  const systemPrompt = settings[PROMPT_KEY_BY_ACTION[action]];
+  const systemPrompt = resolveSystemPrompt(settings, action);
   const userPrompt = buildUserPrompt(action, context);
 
   if (settings.provider === "gemini") {

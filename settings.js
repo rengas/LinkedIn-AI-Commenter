@@ -7,12 +7,7 @@ const FIELDS = [
   "geminiApiKey",
   "geminiModel",
   "claudeApiKey",
-  "claudeModel",
-  "promptComment",
-  "promptReply",
-  "promptSummarize",
-  "promptRewrite",
-  "promptMessage"
+  "claudeModel"
 ];
 
 const TOGGLES = {
@@ -22,7 +17,27 @@ const TOGGLES = {
   toggleRewrite: "enableRewrite"
 };
 
+// Maps prompt textarea element id → persona.prompts key.
+const PROMPT_TEXTAREA_TO_KEY = {
+  promptComment: "comment",
+  promptReply: "reply",
+  promptSummarize: "summarize",
+  promptRewrite: "rewrite",
+  promptMessage: "message"
+};
+
+let personas = [];
+let activePersonaId = null;
+
 function $(id) { return document.getElementById(id); }
+
+function newPersonaId() {
+  return "p_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+function getActivePersona() {
+  return personas.find(p => p.id === activePersonaId) || personas[0];
+}
 
 function showProviderSection(provider) {
   document.querySelectorAll(".provider-section").forEach(el => el.classList.remove("active"));
@@ -30,19 +45,95 @@ function showProviderSection(provider) {
   if (section) section.classList.add("active");
 }
 
+// Pull current textarea values into the active persona's prompts (in memory only).
+function syncPromptsToActivePersona() {
+  const persona = getActivePersona();
+  if (!persona) return;
+  if (!persona.prompts) persona.prompts = {};
+  Object.entries(PROMPT_TEXTAREA_TO_KEY).forEach(([elId, key]) => {
+    persona.prompts[key] = $(elId).value;
+  });
+}
+
+function renderPersonaSelect() {
+  const sel = $("personaSelect");
+  sel.innerHTML = "";
+  personas.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === activePersonaId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderPersonaPrompts() {
+  const persona = getActivePersona();
+  if (!persona) return;
+  Object.entries(PROMPT_TEXTAREA_TO_KEY).forEach(([elId, key]) => {
+    $(elId).value = (persona.prompts && persona.prompts[key]) || DEFAULT_PROMPTS[key];
+  });
+}
+
+function persistPersonas() {
+  chrome.storage.local.set({ personas, activePersonaId });
+}
+
 function loadIntoUI() {
-  chrome.storage.local.get(ALL_DEFAULTS, (settings) => {
-    FIELDS.forEach(k => { $(k).value = settings[k]; });
+  // Use null to read everything stored, so we can detect missing keys for migration.
+  chrome.storage.local.get(null, (raw) => {
+    const settings = { ...ALL_DEFAULTS, ...raw };
+
+    FIELDS.forEach(k => {
+      if ($(k)) $(k).value = settings[k];
+    });
     Object.entries(TOGGLES).forEach(([elId, key]) => {
       $(elId).checked = !!settings[key];
     });
     showProviderSection(settings.provider);
+
+    // Personas — migrate legacy promptX fields if no personas array yet.
+    let needsPersist = false;
+    if (Array.isArray(raw.personas) && raw.personas.length) {
+      personas = raw.personas;
+    } else {
+      personas = [{
+        id: DEFAULT_PERSONA_ID,
+        name: "Default",
+        prompts: {
+          comment: raw.promptComment || DEFAULT_PROMPTS.comment,
+          reply: raw.promptReply || DEFAULT_PROMPTS.reply,
+          summarize: raw.promptSummarize || DEFAULT_PROMPTS.summarize,
+          rewrite: raw.promptRewrite || DEFAULT_PROMPTS.rewrite,
+          message: raw.promptMessage || DEFAULT_PROMPTS.message
+        }
+      }];
+      needsPersist = true;
+    }
+    activePersonaId =
+      raw.activePersonaId && personas.find(p => p.id === raw.activePersonaId)
+        ? raw.activePersonaId
+        : personas[0].id;
+
+    renderPersonaSelect();
+    renderPersonaPrompts();
+
+    if (needsPersist) {
+      persistPersonas();
+      // Clean up legacy keys — they've been migrated into the default persona.
+      chrome.storage.local.remove([
+        "promptComment", "promptReply", "promptSummarize", "promptRewrite", "promptMessage"
+      ]);
+    }
   });
 }
 
 function collectFromUI() {
-  const out = {};
-  FIELDS.forEach(k => { out[k] = $(k).value.trim(); });
+  syncPromptsToActivePersona();
+  const out = { personas, activePersonaId };
+  FIELDS.forEach(k => {
+    if ($(k)) out[k] = $(k).value.trim();
+  });
   Object.entries(TOGGLES).forEach(([elId, key]) => {
     out[key] = $(elId).checked;
   });
@@ -64,12 +155,66 @@ document.addEventListener("DOMContentLoaded", () => {
     showProviderSection(e.target.value);
   });
 
-  // Reset buttons (per prompt)
+  // Persona switch — capture in-flight prompt edits, switch, render, persist.
+  $("personaSelect").addEventListener("change", (e) => {
+    syncPromptsToActivePersona();
+    activePersonaId = e.target.value;
+    renderPersonaPrompts();
+    persistPersonas();
+  });
+
+  $("addPersonaBtn").addEventListener("click", () => {
+    const name = (prompt("Name for the new persona?", `Persona ${personas.length + 1}`) || "").trim();
+    if (!name) return;
+    syncPromptsToActivePersona();
+    const persona = {
+      id: newPersonaId(),
+      name,
+      prompts: { ...DEFAULT_PROMPTS }
+    };
+    personas.push(persona);
+    activePersonaId = persona.id;
+    renderPersonaSelect();
+    renderPersonaPrompts();
+    persistPersonas();
+    flashStatus($("personaStatus"), `Added "${name}".`, "ok");
+  });
+
+  $("renamePersonaBtn").addEventListener("click", () => {
+    const persona = getActivePersona();
+    if (!persona) return;
+    const name = (prompt("Rename persona:", persona.name) || "").trim();
+    if (!name || name === persona.name) return;
+    persona.name = name;
+    renderPersonaSelect();
+    persistPersonas();
+    flashStatus($("personaStatus"), "Renamed.", "ok");
+  });
+
+  $("deletePersonaBtn").addEventListener("click", () => {
+    if (personas.length <= 1) {
+      flashStatus($("personaStatus"), "Can't delete the last persona.", "err");
+      return;
+    }
+    const persona = getActivePersona();
+    if (!persona) return;
+    if (!confirm(`Delete persona "${persona.name}"? This can't be undone.`)) return;
+    personas = personas.filter(p => p.id !== persona.id);
+    activePersonaId = personas[0].id;
+    renderPersonaSelect();
+    renderPersonaPrompts();
+    persistPersonas();
+    flashStatus($("personaStatus"), "Deleted.", "ok");
+  });
+
+  // Reset buttons (per prompt) — reset only the active persona's prompt for that field.
   document.querySelectorAll("[data-reset]").forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.preventDefault();
-      const key = btn.getAttribute("data-reset");
-      $(key).value = ALL_DEFAULTS[key];
+      const elId = btn.getAttribute("data-reset");
+      const key = PROMPT_TEXTAREA_TO_KEY[elId];
+      if (!key) return;
+      $(elId).value = DEFAULT_PROMPTS[key];
     });
   });
 

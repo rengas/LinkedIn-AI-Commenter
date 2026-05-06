@@ -35,6 +35,16 @@ const DEFAULT_FEATURE_TOGGLES = {
   enableRewrite: true
 };
 
+const DEFAULT_PERSONA_ID = "default";
+
+function makeDefaultPersonas() {
+  return [{
+    id: DEFAULT_PERSONA_ID,
+    name: "Default",
+    prompts: { ...DEFAULT_PROMPTS }
+  }];
+}
+
 const ALL_DEFAULTS = {
   provider: DEFAULT_PROVIDER,
   ollamaUrl: DEFAULT_OLLAMA_URL,
@@ -43,11 +53,8 @@ const ALL_DEFAULTS = {
   geminiModel: DEFAULT_GEMINI_MODEL,
   claudeApiKey: "",
   claudeModel: DEFAULT_CLAUDE_MODEL,
-  promptComment: DEFAULT_PROMPTS.comment,
-  promptReply: DEFAULT_PROMPTS.reply,
-  promptSummarize: DEFAULT_PROMPTS.summarize,
-  promptRewrite: DEFAULT_PROMPTS.rewrite,
-  promptMessage: DEFAULT_PROMPTS.message,
+  personas: makeDefaultPersonas(),
+  activePersonaId: DEFAULT_PERSONA_ID,
   ...DEFAULT_FEATURE_TOGGLES
 };
 
@@ -55,4 +62,6 @@ const ALL_DEFAULTS = {
 if (typeof self !== "undefined") {
   self.ALL_DEFAULTS = ALL_DEFAULTS;
   self.DEFAULT_PROMPTS = DEFAULT_PROMPTS;
+  self.makeDefaultPersonas = makeDefaultPersonas;
+  self.DEFAULT_PERSONA_ID = DEFAULT_PERSONA_ID;
 }

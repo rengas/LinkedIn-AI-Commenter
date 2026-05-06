@@ -14,6 +14,28 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleSummarizer').checked = settings.enableSummarizer;
     document.getElementById('toggleRewrite').checked = settings.enableRewrite;
   });
+
+  // Active persona dropdown
+  chrome.storage.local.get(["personas", "activePersonaId"], ({ personas, activePersonaId }) => {
+    const sel = document.getElementById('popupPersonaSelect');
+    const row = document.getElementById('personaRow');
+    if (!Array.isArray(personas) || personas.length <= 1) {
+      // Hide the row when there's only one persona — no need to show a picker.
+      if (row) row.style.display = 'none';
+      return;
+    }
+    sel.innerHTML = '';
+    personas.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      if (p.id === activePersonaId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', (e) => {
+      chrome.storage.local.set({ activePersonaId: e.target.value });
+    });
+  });
 });
 
 // Save settings when toggles change
